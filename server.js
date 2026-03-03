@@ -40,7 +40,9 @@ const Attendance = mongoose.model("Attendance", attendanceSchema);
 const summarySchema = new mongoose.Schema({
     name: String,
     id: Number,
-    totalMinutes: Number
+    totalMinutes: Number,
+    totalHours: Number,
+    remainingMinutes: Number
 });
 
 const Summary = mongoose.model("Summary", summarySchema);
@@ -67,7 +69,7 @@ app.post("/log", async (req, res) => {
             return res.status(200).send("Unauthorized Logged");
         }
 
-        // 🔎 Find open session (checkOut = null)
+        // 🔎 Check if user has open session
         let openSession = await Attendance.findOne({
             id: id,
             checkOut: null
@@ -99,17 +101,29 @@ app.post("/log", async (req, res) => {
         openSession.totalMinutes = minutes;
         await openSession.save();
 
-        // Update lifetime summary
+        /* ================= UPDATE SUMMARY ================= */
+
         let summary = await Summary.findOne({ id });
 
         if (!summary) {
+
+            const totalHours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+
             await Summary.create({
                 name,
                 id,
-                totalMinutes: minutes
+                totalMinutes: minutes,
+                totalHours: totalHours,
+                remainingMinutes: remainingMinutes
             });
+
         } else {
+
             summary.totalMinutes += minutes;
+            summary.totalHours = Math.floor(summary.totalMinutes / 60);
+            summary.remainingMinutes = summary.totalMinutes % 60;
+
             await summary.save();
         }
 
@@ -120,9 +134,13 @@ app.post("/log", async (req, res) => {
     }
 });
 
+/* ================= ROOT ROUTE ================= */
+
 app.get("/", (req, res) => {
     res.send("Biometric Attendance API Running 🚀");
 });
+
+/* ================= SERVER START ================= */
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
