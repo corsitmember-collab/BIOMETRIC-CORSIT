@@ -6,6 +6,8 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+app.set('trust proxy', true);
+
 // 🔹 Use Environment Variable for Security
 const MONGO_URI = process.env.MONGO_URI;
 
