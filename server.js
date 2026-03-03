@@ -28,7 +28,6 @@ const Log = mongoose.model("Log", logSchema);
 const attendanceSchema = new mongoose.Schema({
     name: String,
     id: Number,
-    date: String,
     checkIn: String,
     checkOut: String,
     totalMinutes: Number
@@ -68,21 +67,19 @@ app.post("/log", async (req, res) => {
             return res.status(200).send("Unauthorized Logged");
         }
 
-        const date = timestamp.split(" ")[0];
-
-        // Check if already checked in today
-        let todayRecord = await Attendance.findOne({
+        // 🔎 Find open session (checkOut = null)
+        let openSession = await Attendance.findOne({
             id: id,
-            date: date
+            checkOut: null
         });
 
-        // FIRST SCAN = CHECK-IN
-        if (!todayRecord) {
+        /* ================= CHECK-IN ================= */
+
+        if (!openSession) {
 
             await Attendance.create({
                 name,
                 id,
-                date,
                 checkIn: timestamp,
                 checkOut: null,
                 totalMinutes: 0
@@ -91,38 +88,32 @@ app.post("/log", async (req, res) => {
             return res.status(200).send("CHECK-IN SUCCESS");
         }
 
-        // SECOND SCAN = CHECK-OUT
-        if (todayRecord && !todayRecord.checkOut) {
+        /* ================= CHECK-OUT ================= */
 
-            todayRecord.checkOut = timestamp;
+        const minutes = calculateMinutes(
+            openSession.checkIn,
+            timestamp
+        );
 
-            const minutes = calculateMinutes(
-                todayRecord.checkIn,
-                timestamp
-            );
+        openSession.checkOut = timestamp;
+        openSession.totalMinutes = minutes;
+        await openSession.save();
 
-            todayRecord.totalMinutes = minutes;
-            await todayRecord.save();
+        // Update lifetime summary
+        let summary = await Summary.findOne({ id });
 
-            // Update Lifetime Summary
-            let summary = await Summary.findOne({ id });
-
-            if (!summary) {
-                await Summary.create({
-                    name,
-                    id,
-                    totalMinutes: minutes
-                });
-            } else {
-                summary.totalMinutes += minutes;
-                await summary.save();
-            }
-
-            return res.status(200).send("CHECK-OUT SUCCESS");
+        if (!summary) {
+            await Summary.create({
+                name,
+                id,
+                totalMinutes: minutes
+            });
+        } else {
+            summary.totalMinutes += minutes;
+            await summary.save();
         }
 
-        // If already checked out
-        return res.status(200).send("ALREADY CHECKED OUT");
+        return res.status(200).send("CHECK-OUT SUCCESS");
 
     } catch (err) {
         res.status(500).send(err.message);
